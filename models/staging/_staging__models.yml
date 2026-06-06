@@ -1,0 +1,101 @@
+version: 2
+
+models:
+
+  - name: stg_olist__orders
+    description: >
+      Cleaned and typed orders. One row per order_id.
+      Timestamps cast to TIMESTAMP_NTZ. Status values preserved as-is.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests: [not_null]
+      - name: order_status
+        tests: [not_null]
+      - name: order_purchased_at
+        tests: [not_null]
+
+  - name: stg_olist__customers
+    description: >
+      Cleaned customers. Note: customer_id is per-order, customer_unique_id
+      is the true unique customer. Both are preserved.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: customer_unique_id
+        tests: [not_null]
+
+  - name: stg_olist__order_items
+    description: >
+      Cleaned order line items. Surrogate key is order_id + order_item_id.
+      Price and freight cast to NUMBER(10,2).
+    columns:
+      - name: order_item_sk
+        description: Surrogate key — md5(order_id || order_item_id)
+        tests: [unique, not_null]
+      - name: order_id
+        tests: [not_null]
+      - name: item_price
+        tests: [not_null]
+      - name: freight_value
+        tests: [not_null]
+
+  - name: stg_olist__order_payments
+    description: >
+      Cleaned payment records. One row per payment installment.
+      Surrogate key is order_id + payment_sequential.
+    columns:
+      - name: payment_sk
+        description: Surrogate key — md5(order_id || payment_sequential)
+        tests: [unique, not_null]
+      - name: order_id
+        tests: [not_null]
+      - name: payment_type
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - credit_card
+                  - boleto
+                  - voucher
+                  - debit_card
+                  - not_defined
+
+  - name: stg_olist__order_reviews
+    description: Cleaned reviews with scores and timestamps.
+    columns:
+      - name: review_id
+        tests: [not_null]
+      - name: order_id
+        tests: [not_null]
+      - name: review_score
+        tests:
+          - accepted_values:
+              values:
+                - 1
+                - 2
+                - 3
+                - 4
+                - 5
+
+  - name: stg_olist__products
+    description: >
+      Cleaned product catalog. Category joined with English translation.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: stg_olist__sellers
+    description: Cleaned seller registry.
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+
+  - name: stg_olist__geolocation
+    description: >
+      Deduplicated geolocation — one row per ZIP prefix using AVG lat/lng.
+      Raw table has intentional duplicates; this model collapses them.
+    columns:
+      - name: zip_code_prefix
+        tests: [unique, not_null]

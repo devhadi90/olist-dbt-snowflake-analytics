@@ -1,0 +1,77 @@
+# =============================================================================
+# profiles.yml.example
+# Copy to ~/.dbt/profiles.yml and fill in your credentials.
+# NEVER commit profiles.yml — it is in .gitignore.
+# =============================================================================
+
+olist:
+  target: dev
+
+  outputs:
+
+    # -------------------------------------------------------------------------
+    # dev: your local development target
+    # dbt writes to olist_analytics.<your_name>_<schema>
+    # e.g. olist_analytics.hadi_staging
+    # -------------------------------------------------------------------------
+    dev:
+      type: snowflake
+      account: VPHIWTB-HD71021
+      user: HADI90
+      authenticator: externalbrowser   # SSO login — no password in file
+      role: transformer
+      warehouse: olist_transform_wh
+      database: olist_analytics
+      schema: dev                      # generate_schema_name macro appends this
+      threads: 4
+      client_session_keep_alive: false
+      query_tag: dbt_dev
+
+    # -------------------------------------------------------------------------
+    # ci: GitHub Actions target — uses key-pair auth via secrets
+    # Writes to olist_analytics.ci schema (isolated, wiped after each run)
+    # -------------------------------------------------------------------------
+    ci:
+      type: snowflake
+      account: VPHIWTB-HD71021
+      user: "{{ env_var('SNOWFLAKE_CI_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE', '') }}"
+      role: transformer
+      warehouse: olist_transform_wh
+      database: olist_analytics
+      schema: ci
+      threads: 4
+      query_tag: dbt_ci
+
+    # -------------------------------------------------------------------------
+    # staging: auto-deployed on merge to main
+    # -------------------------------------------------------------------------
+    staging:
+      type: snowflake
+      account: VPHIWTB-HD71021
+      user: "{{ env_var('SNOWFLAKE_CI_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE', '') }}"
+      role: transformer
+      warehouse: olist_transform_wh
+      database: olist_analytics
+      schema: staging_deploy
+      threads: 4
+      query_tag: dbt_staging
+
+    # -------------------------------------------------------------------------
+    # prod: manually approved production deploy
+    # -------------------------------------------------------------------------
+    prod:
+      type: snowflake
+      account: VPHIWTB-HD71021
+      user: "{{ env_var('SNOWFLAKE_CI_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE', '') }}"
+      role: transformer
+      warehouse: olist_transform_wh
+      database: olist_analytics
+      schema: prod
+      threads: 8
+      query_tag: dbt_prod

@@ -1,0 +1,35 @@
+version: 2
+
+exposures:
+
+  - name: olist_revenue_dashboard
+    type: dashboard
+    maturity: medium
+    url: https://your-metabase-instance.com/dashboard/1
+    description: >
+      Main operations dashboard showing revenue by state, delivery performance,
+      and seller rankings. Primary consumer of fct_orders and dim_customers.
+
+    depends_on:
+      - ref('fct_orders')
+      - ref('dim_customers')
+      - ref('dim_sellers')
+
+    owner:
+      name: Hadi Waheed
+      email: your@email.com
+
+  - name: olist_seller_performance
+    type: dashboard
+    maturity: low
+    description: >
+      Seller-level performance dashboard. Revenue, on-time delivery rate,
+      and review scores by seller.
+
+    depends_on:
+      - ref('fct_orders')
+      - ref('dim_sellers')
+
+    owner:
+      name: Hadi Waheed
+      email: your@email.com

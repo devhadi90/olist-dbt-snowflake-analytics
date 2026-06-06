@@ -1,0 +1,65 @@
+name: 'olist'
+version: '1.0.0'
+config-version: 2
+
+profile: 'olist'
+
+model-paths:    ["models"]
+analysis-paths: ["analyses"]
+test-paths:     ["tests"]
+seed-paths:     ["seeds"]
+macro-paths:    ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# =============================================================================
+# Model configurations
+# =============================================================================
+models:
+  olist:
+
+    staging:
+      +schema:       staging
+      +materialized: view          # staging models are always views
+      +tags:         ["staging"]
+
+    intermediate:
+      +schema:       intermediate
+      +materialized: ephemeral     # not persisted — consumed by marts only
+      +tags:         ["intermediate"]
+
+    marts:
+      +schema:       marts
+      +materialized: table         # marts are always tables for BI performance
+      +tags:         ["marts"]
+
+      core:
+        +tags: ["marts", "core"]
+
+      finance:
+        +tags: ["marts", "finance"]
+
+# =============================================================================
+# Snapshot configurations
+# =============================================================================
+snapshots:
+  olist:
+    +target_schema: snapshots
+    +strategy:      timestamp
+
+# =============================================================================
+# Seed configurations
+# =============================================================================
+seeds:
+  olist:
+    +schema: seeds
+
+# =============================================================================
+# Variables
+# =============================================================================
+vars:
+  olist:
+    start_date: '2016-01-01'

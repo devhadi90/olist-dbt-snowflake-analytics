@@ -1,0 +1,53 @@
+version: 2
+
+models:
+
+  - name: dim_customers
+    description: >
+      Customer dimension. One row per unique customer (customer_unique_id).
+      Includes location, order history counts, and first/last order dates.
+    columns:
+      - name: customer_unique_id
+        tests: [unique, not_null]
+      - name: customer_state
+        tests: [not_null]
+
+  - name: dim_products
+    description: >
+      Product dimension. One row per product_id.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: dim_sellers
+    description: >
+      Seller dimension. One row per seller_id with location.
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+
+  - name: fct_orders
+    description: >
+      Order fact table. One row per order_id.
+      Grain: one order. Contains keys to all dimensions + measures.
+      Source of truth for revenue, delivery, and satisfaction analysis.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_unique_id
+        tests: [not_null]
+      - name: total_order_value
+        tests: [not_null]
+      - name: order_status
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - delivered
+                  - shipped
+                  - canceled
+                  - unavailable
+                  - invoiced
+                  - processing
+                  - created
+                  - approved

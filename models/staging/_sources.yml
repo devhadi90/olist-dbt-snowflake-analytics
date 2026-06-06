@@ -1,0 +1,137 @@
+version: 2
+
+sources:
+  - name: olist_raw
+    description: >
+      Raw Olist e-commerce data loaded from CSV files via SnowSQL COPY INTO.
+      These tables are in the raw schema and are never modified by dbt.
+    database: olist_analytics
+    schema: raw
+    loader: snowsql
+    config:
+      loaded_at_field: null   # raw tables have no updated_at; freshness checked at pipeline level
+
+    tables:
+
+      - name: orders
+        description: >
+          One row per order. Central fact table connecting customers, items,
+          payments and reviews.
+        columns:
+          - name: order_id
+            description: Primary key. Unique identifier for each order.
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            description: FK to customers. One customer per order.
+            tests:
+              - not_null
+              - relationships:
+                  to: source('olist_raw', 'customers')
+                  field: customer_id
+          - name: order_status
+            description: Current status of the order.
+            tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    - delivered
+                    - shipped
+                    - canceled
+                    - unavailable
+                    - invoiced
+                    - processing
+                    - created
+                    - approved
+          - name: order_purchase_timestamp
+            tests: [not_null]
+
+      - name: customers
+        description: One row per customer_id (not unique customer — see customer_unique_id).
+        columns:
+          - name: customer_id
+            tests: [unique, not_null]
+          - name: customer_unique_id
+            tests: [not_null]
+          - name: customer_state
+            tests: [not_null]
+
+      - name: order_items
+        description: One row per order-item. An order can have multiple items.
+        columns:
+          - name: order_id
+            tests: [not_null]
+          - name: order_item_id
+            tests: [not_null]
+          - name: product_id
+            tests: [not_null]
+          - name: seller_id
+            tests: [not_null]
+          - name: price
+            tests: [not_null]
+          - name: freight_value
+            tests: [not_null]
+
+      - name: order_payments
+        description: One row per payment installment. An order can have multiple payments.
+        columns:
+          - name: order_id
+            tests: [not_null]
+          - name: payment_sequential
+            tests: [not_null]
+          - name: payment_type
+            tests:
+              - accepted_values:
+                  values:
+                    - credit_card
+                    - boleto
+                    - voucher
+                    - debit_card
+                    - not_defined
+
+      - name: order_reviews
+        description: Customer reviews linked to orders.
+        columns:
+          - name: review_id
+            tests: [not_null]
+          - name: order_id
+            tests: [not_null]
+          - name: review_score
+            tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+
+      - name: products
+        description: Product catalog with dimensions and category.
+        columns:
+          - name: product_id
+            tests: [unique, not_null]
+
+      - name: sellers
+        description: Seller registry.
+        columns:
+          - name: seller_id
+            tests: [unique, not_null]
+
+      - name: geolocation
+        description: >
+          ZIP code to lat/lng mapping. Contains duplicates by design
+          (multiple coordinates per ZIP). Deduplicated in staging.
+        columns:
+          - name: geolocation_zip_code_prefix
+            tests: [not_null]
+
+      - name: category_translation
+        description: Portuguese to English product category name translation.
+        columns:
+          - name: product_category_name
+            tests: [unique, not_null]
+          - name: product_category_name_english
+            tests: [not_null]

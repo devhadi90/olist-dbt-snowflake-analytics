@@ -1,0 +1,126 @@
+name: CD - Staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'models/**'
+      - 'tests/**'
+      - 'macros/**'
+      - 'snapshots/**'
+      - 'dbt_project.yml'
+      - 'packages.yml'
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Automated SemVer tag based on conventional commits
+  # e.g. feat: → minor bump, fix: → patch bump, BREAKING CHANGE → major bump
+  # ---------------------------------------------------------------------------
+  tag:
+    name: SemVer Tag
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.tag.outputs.new_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          tag_prefix: v
+
+  # ---------------------------------------------------------------------------
+  # Deploy to staging Snowflake schemas
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: tag
+    environment: staging
+
+    env:
+      DBT_PROFILES_DIR: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dbt
+        run: pip install dbt-snowflake
+
+      - name: Write profiles.yml
+        run: |
+          cat > profiles.yml << EOF
+          olist:
+            target: staging
+            outputs:
+              staging:
+                type: snowflake
+                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+                user: ${{ secrets.SNOWFLAKE_CI_USER }}
+                private_key_path: /tmp/snowflake_key.p8
+                role: transformer
+                warehouse: olist_transform_wh
+                database: olist_analytics
+                schema: staging_deploy
+                threads: 4
+                query_tag: dbt_staging_${{ needs.tag.outputs.new_tag }}
+          EOF
+
+      - name: Write Snowflake private key
+        run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_key.p8
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: dbt build (full staging run)
+        run: dbt build --target staging
+
+      - name: Generate dbt docs
+        run: dbt docs generate --target staging
+
+      - name: Upload docs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-docs-${{ needs.tag.outputs.new_tag }}
+          path: |
+            target/manifest.json
+            target/catalog.json
+            target/index.html
+          retention-days: 30
+
+      # Publish dbt docs to GitHub Pages
+      - name: Deploy docs to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target
+          publish_branch: gh-pages
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "✅ Staging deploy complete — version ${{ needs.tag.outputs.new_tag }}"
+          # Uncomment when Slack webhook is configured:
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"✅ Olist staging deploy ${{ needs.tag.outputs.new_tag }} succeeded"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Staging deploy failed — version ${{ needs.tag.outputs.new_tag }}"
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"❌ Olist staging deploy ${{ needs.tag.outputs.new_tag }} FAILED"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}

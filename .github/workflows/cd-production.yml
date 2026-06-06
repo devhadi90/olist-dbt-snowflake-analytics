@@ -1,0 +1,126 @@
+name: CD - Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to deploy (e.g. v1.2.3)'
+        required: true
+        type: string
+      full_refresh:
+        description: 'Run dbt with --full-refresh? (rebuilds all tables from scratch)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Manual approval gate — configured in GitHub → Environments → production
+  # Add required reviewers there; this job will pause until approved.
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production       # ← approval gate lives here in GitHub UI
+
+    env:
+      DBT_PROFILES_DIR: .
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dbt
+        run: pip install dbt-snowflake
+
+      - name: Write profiles.yml
+        run: |
+          cat > profiles.yml << EOF
+          olist:
+            target: prod
+            outputs:
+              prod:
+                type: snowflake
+                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+                user: ${{ secrets.SNOWFLAKE_CI_USER }}
+                private_key_path: /tmp/snowflake_key.p8
+                role: transformer
+                warehouse: olist_transform_wh
+                database: olist_analytics
+                schema: prod
+                threads: 8
+                query_tag: dbt_prod_${{ github.event.inputs.version }}
+          EOF
+
+      - name: Write Snowflake private key
+        run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_key.p8
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: dbt build — production
+        run: |
+          if [ "${{ github.event.inputs.full_refresh }}" = "true" ]; then
+            echo "Running full-refresh build"
+            dbt build --target prod --full-refresh
+          else
+            dbt build --target prod
+          fi
+
+      # Save prod manifest — used by CI slim state comparison
+      - name: Upload prod manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-manifest
+          path: target/manifest.json
+          retention-days: 90      # keep 90 days for rollback / state comparison
+
+      - name: Generate and publish docs
+        run: dbt docs generate --target prod
+
+      - name: Deploy docs to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target
+          publish_branch: gh-pages
+
+      - name: Record deployment in artifacts
+        run: |
+          mkdir -p artifacts
+          echo '{
+            "version": "${{ github.event.inputs.version }}",
+            "deployed_at": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+            "deployed_by": "${{ github.actor }}",
+            "commit_sha": "${{ github.sha }}",
+            "full_refresh": "${{ github.event.inputs.full_refresh }}"
+          }' > artifacts/last_deploy.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-record-${{ github.event.inputs.version }}
+          path: artifacts/last_deploy.json
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "✅ Production deploy ${{ github.event.inputs.version }} complete"
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"✅ Olist PROD deploy ${{ github.event.inputs.version }} succeeded — deployed by ${{ github.actor }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Production deploy ${{ github.event.inputs.version }} FAILED"
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"❌ Olist PROD deploy ${{ github.event.inputs.version }} FAILED — see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}

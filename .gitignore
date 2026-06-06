@@ -1,0 +1,25 @@
+# dbt
+target/
+dbt_packages/
+logs/
+profiles.yml          # NEVER commit — use profiles.yml.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Secrets
+*.p8                  # Snowflake private keys
+.secrets.baseline
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

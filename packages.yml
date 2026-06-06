@@ -1,0 +1,12 @@
+packages:
+  # dbt Labs official utility library — date spines, surrogate keys, etc.
+  - package: dbt-labs/dbt_utils
+    version: [">=1.3.0", "<2.0.0"]
+
+  # Data observability — generates health reports on your models
+  - package: elementary-data/elementary
+    version: [">=0.16.0", "<1.0.0"]
+
+  # Automated data quality alerts
+  - package: metaplane/dbt_expectations
+    version: [">=0.10.0", "<1.0.0"]
