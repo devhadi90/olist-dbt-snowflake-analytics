@@ -20,7 +20,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Automated SemVer tag based on conventional commits
-  # e.g. feat: → minor bump, fix: → patch bump, BREAKING CHANGE → major bump
   # ---------------------------------------------------------------------------
   tag:
     name: SemVer Tag
@@ -32,14 +31,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump version and push tag
+      - name: Compute next version and push tag
         id: tag
-        uses: mathieudutour/github-tag-action@v6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
-          tag_prefix: v
+        run: |
+          # Get latest tag, default to v0.0.0
+          LATEST=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          LATEST=${LATEST:-v0.0.0}
+
+          # Parse major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+
+          # Determine bump from commit messages since last tag
+          COMMITS=$(git log ${LATEST}..HEAD --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s")
+
+          if echo "$COMMITS" | grep -qiE 'BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+          elif echo "$COMMITS" | grep -qiE '^feat(\(.+\))?:'; then
+            MINOR=$((MINOR + 1)); PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
+          echo "Previous: ${LATEST} → New: ${NEW_TAG}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${NEW_TAG}"
+          git push origin "${NEW_TAG}"
 
   # ---------------------------------------------------------------------------
   # Deploy to staging Snowflake schemas
@@ -105,7 +127,6 @@ jobs:
             target/index.html
           retention-days: 30
 
-      # Publish dbt docs to GitHub Pages
       - name: Deploy docs to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -115,17 +136,8 @@ jobs:
 
       - name: Notify success
         if: success()
-        run: |
-          echo "✅ Staging deploy complete — version ${{ needs.tag.outputs.new_tag }}"
-          # Uncomment when Slack webhook is configured:
-          # curl -X POST -H 'Content-type: application/json' \
-          #   --data '{"text":"✅ Olist staging deploy ${{ needs.tag.outputs.new_tag }} succeeded"}' \
-          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: echo "✅ Staging deploy complete — version ${{ needs.tag.outputs.new_tag }}"
 
       - name: Notify failure
         if: failure()
-        run: |
-          echo "❌ Staging deploy failed — version ${{ needs.tag.outputs.new_tag }}"
-          # curl -X POST -H 'Content-type: application/json' \
-          #   --data '{"text":"❌ Olist staging deploy ${{ needs.tag.outputs.new_tag }} FAILED"}' \
-          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: echo "❌ Staging deploy failed — version ${{ needs.tag.outputs.new_tag }}"
