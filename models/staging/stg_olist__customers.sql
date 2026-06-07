@@ -4,6 +4,7 @@ WITH source AS (
 
 ),
 
+
 renamed AS (
 
     SELECT
